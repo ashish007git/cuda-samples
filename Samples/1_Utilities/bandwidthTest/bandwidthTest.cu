@@ -47,18 +47,22 @@
 #include <cassert>
 #include <iostream>
 #include <memory>
+#include <random>
 
 static const char *sSDKsample = "CUDA Bandwidth Test";
 
 // defines, project
-#define MEMCOPY_ITERATIONS 100
+#define MEAN_OVERHEAD_PER_ITER 0.0031 
+#define USE_RANDOM_OFFSET (true)
+#define L2_FLUSH (true)
+#define MEMCOPY_ITERATIONS 10000
 #define DEFAULT_SIZE (32 * (1e6))      // 32 M
 #define DEFAULT_INCREMENT (4 * (1e6))  // 4 M
 #define CACHE_CLEAR_SIZE (16 * (1e6))  // 16 M
 
 // shmoo mode defines
-#define SHMOO_MEMSIZE_MAX (64 * (1e6))       // 64 M
-#define SHMOO_MEMSIZE_START (1e3)            // 1 KB
+#define SHMOO_MEMSIZE_MAX (1 * (1024*1024*1024))        // 1 GB
+#define SHMOO_MEMSIZE_START (1024)            // 1 KB
 #define SHMOO_INCREMENT_1KB (1e3)            // 1 KB
 #define SHMOO_INCREMENT_2KB (2 * 1e3)        // 2 KB
 #define SHMOO_INCREMENT_10KB (10 * (1e3))    // 10KB
@@ -72,6 +76,9 @@ static const char *sSDKsample = "CUDA Bandwidth Test";
 #define SHMOO_LIMIT_1MB (1e6)                // 1 MB
 #define SHMOO_LIMIT_16MB (16 * 1e6)          // 16 MB
 #define SHMOO_LIMIT_32MB (32 * 1e6)          // 32 MB
+
+#define ALLOC_MEM_SIZE (2 * 1024 * 1024 * 1024ULL) // 2GB
+#define MEM_ALIGNMENT (1024ULL) // 1KB
 
 // CPU cache flush
 #define FLUSH_SIZE (256 * 1024 * 1024)
@@ -122,6 +129,7 @@ void printResultsCSV(unsigned int *memSizes, double *bandwidths,
                      unsigned int count, memcpyKind kind, memoryMode memMode,
                      int iNumDevs, bool wc);
 void printHelp(void);
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Program main
@@ -486,14 +494,14 @@ void testBandwidthShmoo(memcpyKind kind, printMode printmode,
                         memoryMode memMode, int startDevice, int endDevice,
                         bool wc) {
   // count the number of copies to make
-  unsigned int count =
-      1 + (SHMOO_LIMIT_20KB / SHMOO_INCREMENT_1KB) +
-      ((SHMOO_LIMIT_50KB - SHMOO_LIMIT_20KB) / SHMOO_INCREMENT_2KB) +
-      ((SHMOO_LIMIT_100KB - SHMOO_LIMIT_50KB) / SHMOO_INCREMENT_10KB) +
-      ((SHMOO_LIMIT_1MB - SHMOO_LIMIT_100KB) / SHMOO_INCREMENT_100KB) +
-      ((SHMOO_LIMIT_16MB - SHMOO_LIMIT_1MB) / SHMOO_INCREMENT_1MB) +
-      ((SHMOO_LIMIT_32MB - SHMOO_LIMIT_16MB) / SHMOO_INCREMENT_2MB) +
-      ((SHMOO_MEMSIZE_MAX - SHMOO_LIMIT_32MB) / SHMOO_INCREMENT_4MB);
+  unsigned int count = 21  ;
+//    1 + (SHMOO_LIMIT_20KB / SHMOO_INCREMENT_1KB) +
+//      ((SHMOO_LIMIT_50KB - SHMOO_LIMIT_20KB) / SHMOO_INCREMENT_2KB) +
+//      ((SHMOO_LIMIT_100KB - SHMOO_LIMIT_50KB) / SHMOO_INCREMENT_10KB) +
+//      ((SHMOO_LIMIT_1MB - SHMOO_LIMIT_100KB) / SHMOO_INCREMENT_100KB) +
+//      ((SHMOO_LIMIT_16MB - SHMOO_LIMIT_1MB) / SHMOO_INCREMENT_1MB) +
+//      ((SHMOO_LIMIT_32MB - SHMOO_LIMIT_16MB) / SHMOO_INCREMENT_2MB) +
+//      ((SHMOO_MEMSIZE_MAX - SHMOO_LIMIT_32MB) / SHMOO_INCREMENT_4MB);
 
   unsigned int *memSizes = (unsigned int *)malloc(count * sizeof(unsigned int));
   double *bandwidths = (double *)malloc(count * sizeof(double));
@@ -510,24 +518,24 @@ void testBandwidthShmoo(memcpyKind kind, printMode printmode,
     cudaSetDevice(currentDevice);
     // Run the shmoo
     int iteration = 0;
-    unsigned int memSize = 0;
+    unsigned int memSize = SHMOO_MEMSIZE_START;
 
     while (memSize <= SHMOO_MEMSIZE_MAX) {
-      if (memSize < SHMOO_LIMIT_20KB) {
-        memSize += SHMOO_INCREMENT_1KB;
-      } else if (memSize < SHMOO_LIMIT_50KB) {
-        memSize += SHMOO_INCREMENT_2KB;
-      } else if (memSize < SHMOO_LIMIT_100KB) {
-        memSize += SHMOO_INCREMENT_10KB;
-      } else if (memSize < SHMOO_LIMIT_1MB) {
-        memSize += SHMOO_INCREMENT_100KB;
-      } else if (memSize < SHMOO_LIMIT_16MB) {
-        memSize += SHMOO_INCREMENT_1MB;
-      } else if (memSize < SHMOO_LIMIT_32MB) {
-        memSize += SHMOO_INCREMENT_2MB;
-      } else {
-        memSize += SHMOO_INCREMENT_4MB;
-      }
+//      if (memSize < SHMOO_LIMIT_20KB) {
+//        memSize += SHMOO_INCREMENT_1KB;
+//      } else if (memSize < SHMOO_LIMIT_50KB) {
+//        memSize += SHMOO_INCREMENT_2KB;
+//      } else if (memSize < SHMOO_LIMIT_100KB) {
+//        memSize += SHMOO_INCREMENT_10KB;
+//      } else if (memSize < SHMOO_LIMIT_1MB) {
+//        memSize += SHMOO_INCREMENT_100KB;
+//      } else if (memSize < SHMOO_LIMIT_16MB) {
+//        memSize += SHMOO_INCREMENT_1MB;
+//      } else if (memSize < SHMOO_LIMIT_32MB) {
+//        memSize += SHMOO_INCREMENT_2MB;
+//      } else {
+//        memSize += SHMOO_INCREMENT_4MB;
+//      }
 
       memSizes[iteration] = memSize;
 
@@ -549,6 +557,7 @@ void testBandwidthShmoo(memcpyKind kind, printMode printmode,
       }
 
       iteration++;
+      memSize = memSize*2;
       printf(".");
       fflush(0);
     }
@@ -787,6 +796,7 @@ float testHostToDeviceTransfer(unsigned int memSize, memoryMode memMode,
 float testDeviceToDeviceTransfer(unsigned int memSize) {
   StopWatchInterface *timer = NULL;
   float elapsedTimeInMs = 0.0f;
+  float sdkElapsedTime = 0.0f;
   float bandwidthInGBs = 0.0f;
   cudaEvent_t start, stop;
 
@@ -809,37 +819,67 @@ float testDeviceToDeviceTransfer(unsigned int memSize) {
 
   // allocate device memory
   unsigned char *d_idata;
-  checkCudaErrors(cudaMalloc((void **)&d_idata, memSize));
+  checkCudaErrors(cudaMalloc((void **)&d_idata, ALLOC_MEM_SIZE));
   unsigned char *d_odata;
-  checkCudaErrors(cudaMalloc((void **)&d_odata, memSize));
+  checkCudaErrors(cudaMalloc((void **)&d_odata, ALLOC_MEM_SIZE));
+
+  // initialize L2_buffer
+  unsigned char *l2_buffer;
+  int l2_size;
+  if(L2_FLUSH){
+    checkCudaErrors(cudaDeviceGetAttribute(&l2_size, cudaDevAttrL2CacheSize,0));	  
+    checkCudaErrors(cudaMalloc((void **)&l2_buffer, l2_size));
+  }
+
 
   // initialize memory
   checkCudaErrors(
       cudaMemcpy(d_idata, h_idata, memSize, cudaMemcpyHostToDevice));
 
-  // run the memcopy
-  sdkStartTimer(&timer);
-  checkCudaErrors(cudaEventRecord(start, 0));
+  // initialize RNG
+  std::random_device rd;
+  std::mt19937 rng(rd());
 
   for (unsigned int i = 0; i < MEMCOPY_ITERATIONS; i++) {
+    size_t randAlignedOffsetSrc = 0;
+    size_t randAlignedOffsetDst = 0;
+    if (USE_RANDOM_OFFSET) {
+        std::uniform_int_distribution<size_t> offsetDist(0, ALLOC_MEM_SIZE - memSize - 1);
+        randAlignedOffsetSrc = offsetDist(rng) / MEM_ALIGNMENT * MEM_ALIGNMENT;
+        randAlignedOffsetDst = offsetDist(rng) / MEM_ALIGNMENT * MEM_ALIGNMENT;
+    }
+
+    sdkStartTimer(&timer);
+    checkCudaErrors(cudaEventRecord(start, 0));
+
+    // run the memcopy
     checkCudaErrors(
-        cudaMemcpy(d_odata, d_idata, memSize, cudaMemcpyDeviceToDevice));
+          cudaMemcpy(d_odata + randAlignedOffsetDst, d_idata + randAlignedOffsetSrc, memSize, cudaMemcpyDeviceToDevice));
+  
+
+    checkCudaErrors(cudaEventRecord(stop, 0));
+    // Since device to device memory copies are non-blocking,
+    // cudaDeviceSynchronize() is required in order to get
+    // proper timing.
+    checkCudaErrors(cudaDeviceSynchronize());
+    
+    // Get iteration time
+    float iterationTimeInMs = 0.0f;
+    checkCudaErrors(cudaEventElapsedTime(&iterationTimeInMs, start, stop));
+    elapsedTimeInMs += iterationTimeInMs;
+    sdkStopTimer(&timer);
+    sdkElapsedTime += sdkGetTimerValue(&timer);
+    sdkResetTimer(&timer);
+
+    if(L2_FLUSH) checkCudaErrors(cudaMemsetAsync(l2_buffer, 0, static_cast<std::size_t>(l2_size)));
   }
 
-  checkCudaErrors(cudaEventRecord(stop, 0));
 
-  // Since device to device memory copies are non-blocking,
-  // cudaDeviceSynchronize() is required in order to get
-  // proper timing.
-  checkCudaErrors(cudaDeviceSynchronize());
+  elapsedTimeInMs -= MEAN_OVERHEAD_PER_ITER*MEMCOPY_ITERATIONS;
 
-  // get the total elapsed time in ms
-  sdkStopTimer(&timer);
-  checkCudaErrors(cudaEventElapsedTime(&elapsedTimeInMs, start, stop));
+  // printf("Elapsed Time in Ms:  %f, %f \n", elapsedTimeInMs, sdkElapsedTime);
+  if (bDontUseGPUTiming) elapsedTimeInMs = sdkElapsedTime ;
 
-  if (bDontUseGPUTiming) {
-    elapsedTimeInMs = sdkGetTimerValue(&timer);
-  }
 
   // calculate bandwidth in GB/s
   double time_s = elapsedTimeInMs / 1e3;
