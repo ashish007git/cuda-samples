@@ -53,8 +53,9 @@ static const char *sSDKsample = "CUDA Bandwidth Test";
 
 // defines, project
 #define MEAN_OVERHEAD_PER_ITER 0.0031 
-#define USE_RANDOM_OFFSET (true)
+#define USE_RANDOM_OFFSET (false)
 #define L2_FLUSH (true)
+#define USE_KERNEL_MEMCPY (false)
 #define MEMCOPY_ITERATIONS 10000
 #define DEFAULT_SIZE (32 * (1e6))      // 32 M
 #define DEFAULT_INCREMENT (4 * (1e6))  // 4 M
@@ -793,6 +794,16 @@ float testHostToDeviceTransfer(unsigned int memSize, memoryMode memMode,
 ///////////////////////////////////////////////////////////////////////////////
 //! test the bandwidth of a device to device memcopy of a specific size
 ///////////////////////////////////////////////////////////////////////////////
+__global__ void memcpyKernel(int * src, int * dst, size_t numElements){
+  size_t tid = blockIdx.x*blockDim.x + threadIdx.x;
+
+  if(tid < numElements){
+    dst[tid] = src[tid];
+  }
+
+}
+
+
 float testDeviceToDeviceTransfer(unsigned int memSize) {
   StopWatchInterface *timer = NULL;
   float elapsedTimeInMs = 0.0f;
@@ -852,10 +863,22 @@ float testDeviceToDeviceTransfer(unsigned int memSize) {
     sdkStartTimer(&timer);
     checkCudaErrors(cudaEventRecord(start, 0));
 
-    // run the memcopy
-    checkCudaErrors(
+
+    if ( USE_KERNEL_MEMCPY ) {
+	int blockSize = 256;
+	int numElements = memSize/sizeof(int);
+	int gridSize = (numElements + blockSize - 1) / blockSize ;
+
+	// printf("BlockSize %d, GridSize %d, numElements: %d \n", blockSize, gridSize, numElements);
+	memcpyKernel<<<gridSize,blockSize>>>( (int *)(d_idata + randAlignedOffsetSrc),
+				(int *)(d_odata + randAlignedOffsetDst), numElements);
+
+
+    } else {
+      // run the memcopy
+      checkCudaErrors(
           cudaMemcpy(d_odata + randAlignedOffsetDst, d_idata + randAlignedOffsetSrc, memSize, cudaMemcpyDeviceToDevice));
-  
+    }
 
     checkCudaErrors(cudaEventRecord(stop, 0));
     // Since device to device memory copies are non-blocking,
